@@ -11,6 +11,10 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
 import Graphics.Vty.Widgets.All
 import Graphics.Vty.Input.Events
+import Data.Functor
+import Control.Monad.Catch
+import Data.Algorithm.DiffOutput
+import Data.FileStore
 
 data CommandArgs = CommandArgs { usernameArg :: String
                                , passwordFlag :: Bool
@@ -43,6 +47,9 @@ main = do
             Left _ -> error "Could not get commits for PR"
             Right commits -> doReview pr commits
 
+fileStore :: FileStore
+fileStore = gitFileStore "."
+
 doReview :: DetailedPullRequest -> [GDD.Commit] -> IO ()
 doReview pr commits = do
     -- Commits listing
@@ -66,6 +73,15 @@ doReview pr commits = do
     c <- newCollection
     addToCollection c commits fg
 
+    commitsShas `onSelectionChange` \(SelectionOn list text widget) -> do
+        rev <- revision fileStore (T.unpack $ T.replace "\"" "" text)
+        let tr = TimeRange Nothing . Just . revDateTime $ rev
+        diffs <- mapM (diffPathAt fileStore rev) . revChanges $ rev
+        clearList commitView
+        let diffLines = T.lines . foldl (T.append) T.empty . map (T.pack . ppDiff) $ diffs
+        texts <- mapM plainText diffLines
+        mapM_ (addToList commitView "not used") texts
+
     commitView <- plainText "some text"
     fg `onKeyPressed` \_ key _ ->
         if key == KChar 'q'
@@ -73,6 +89,21 @@ doReview pr commits = do
             else return False
 
     runUi c defaultContext
+
+diffPathAt :: FileStore -> Revision -> Change -> IO [Diff [String]]
+diffPathAt fs  (Revision {revId = revId}) (Added fp)= diff fs fp Nothing (Just revId)
+diffPathAt fs parent change = do
+    -- if something is deleted/modified it must have at least two commits, so head is safe
+    base <- head . reverse <$> history fs [fp] tr (Just 2)
+    diff fs fp (Just $ revId base) (Just $ revId parent)
+    where
+        fp = filePathFromChange change
+        tr = TimeRange Nothing . Just . revDateTime $ parent
+
+filePathFromChange :: Change -> FilePath
+filePathFromChange (Added fp) = fp
+filePathFromChange (Deleted fp) = fp
+filePathFromChange (Modified fp) = fp
 
 -- SO: http://stackoverflow.com/questions/4064378/prompting-for-a-password-in-haskell-command-line-application
 getPassword :: IO String
