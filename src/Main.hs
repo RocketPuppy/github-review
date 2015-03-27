@@ -10,8 +10,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
 import Graphics.Vty.Widgets.All
+import Graphics.Vty.Attributes
 import Graphics.Vty.Input.Events
 import Data.Functor
+import Control.Monad
 import Control.Monad.Catch
 import Data.Algorithm.DiffOutput
 import Data.FileStore
@@ -76,13 +78,12 @@ doReview pr commits = do
     commitsShas `onSelectionChange` \(SelectionOn list text widget) -> do
         rev <- revision fileStore (T.unpack $ T.replace "\"" "" text)
         let tr = TimeRange Nothing . Just . revDateTime $ rev
+        let files = map filePathFromChange . revChanges $ rev
         diffs <- mapM (diffPathAt fileStore rev) . revChanges $ rev
         clearList commitView
-        let diffLines = T.lines . foldl (T.append) T.empty . map (T.pack . ppDiff) $ diffs
-        texts <- mapM plainText diffLines
-        mapM_ (addToList commitView "not used") texts
+        diffLines <- concat . concat <$> mapM (\(path, diff) -> sequence $ mapM id [plainText T.empty, plainText (T.pack path) >>= withNormalAttribute (bgColor yellow)] : map colorDiff diff) (zip files diffs)
+        mapM_ (addToList commitView "not used") diffLines
 
-    commitView <- plainText "some text"
     fg `onKeyPressed` \_ key _ ->
         if key == KChar 'q'
             then shutdownUi >> return True
@@ -90,8 +91,13 @@ doReview pr commits = do
 
     runUi c defaultContext
 
+colorDiff :: Diff [String] -> IO [Widget FormattedText]
+colorDiff (First changes) = mapM (withNormalAttribute (bgColor red) <=< plainText . T.pack) changes
+colorDiff (Second changes) = mapM (withNormalAttribute (bgColor green) <=< plainText . T.pack) changes
+colorDiff (Both changes _) = mapM (plainText . T.pack) changes
+
 diffPathAt :: FileStore -> Revision -> Change -> IO [Diff [String]]
-diffPathAt fs  (Revision {revId = revId}) (Added fp)= diff fs fp Nothing (Just revId)
+diffPathAt fs  (Revision {revId = revId}) (Added fp) = diff fs fp Nothing (Just revId)
 diffPathAt fs parent change = do
     -- if something is deleted/modified it must have at least two commits, so head is safe
     base <- head . reverse <$> history fs [fp] tr (Just 2)
