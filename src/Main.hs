@@ -78,9 +78,10 @@ doReview pr commits = do
     commitsShas `onSelectionChange` \(SelectionOn list text widget) -> do
         rev <- revision fileStore (T.unpack $ T.replace "\"" "" text)
         let tr = TimeRange Nothing . Just . revDateTime $ rev
+        let files = map filePathFromChange . revChanges $ rev
         diffs <- mapM (diffPathAt fileStore rev) . revChanges $ rev
         clearList commitView
-        diffLines <- concat . concat <$> mapM (mapM colorDiff) diffs
+        diffLines <- concat . concat <$> mapM (\(path, diff) -> sequence $ mapM id [plainText T.empty, plainText (T.pack path) >>= withNormalAttribute (bgColor yellow)] : map colorDiff diff) (zip files diffs)
         mapM_ (addToList commitView "not used") diffLines
 
     fg `onKeyPressed` \_ key _ ->
