@@ -5,8 +5,11 @@ import System.Console.CmdArgs
 import System.IO
 import GitHub.Endpoints.PullRequests hiding (Diff)
 import qualified GitHub.Data.GitData as GDD
-import GitHub.Data.Name (mkName, Name(..), untagName)
-import GitHub.Data.Id (mkId, Id(..))
+import qualified GitHub.Data.Definitions as GDD
+import qualified GitHub.Data.Repos as GDD
+import qualified GitHub.Data.PullRequests as GDD
+import GitHub.Data.Name (mkName, untagName)
+import GitHub.Data.Id (mkId)
 import GitHub.Auth
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS
@@ -20,6 +23,9 @@ import Control.Monad.Catch
 import Data.Algorithm.DiffOutput
 import Data.FileStore
 import qualified Data.Vector as V
+import Data.Proxy (Proxy(..))
+
+mkPullRequestId = mkId (Proxy :: Proxy GDD.PullRequest)
 
 data CommandArgs = CommandArgs { token :: String
                                , reviewArg :: Int
@@ -36,15 +42,14 @@ commandArgs = CommandArgs { token = def &= help "Github API access token" &= nam
 
 main :: IO ()
 main = do
-    CommandArgs token toReview organization repository <- cmdArgs commandArgs
-    let organization' = N (T.pack organization)
-    let repository' = N (T.pack repository)
-    let toReview' = Id toReview
+    args <- cmdArgs commandArgs
+    let organization = mkOwnerName . T.pack . ghOrganization $ args
+    let repository = mkRepoName . T.pack . ghRepository $ args
+    let toReview = mkPullRequestId . reviewArg $ args
+    let ghAuth = Just . OAuth . BS.pack . token $ args
 
-    let ghAuth = Just (OAuth (BS.pack token))
-
-    pr <- pullRequest' ghAuth organization' repository' toReview'
-    prCommits <- pullRequestCommits' ghAuth organization' repository' toReview'
+    pr <- pullRequest' ghAuth organization repository toReview
+    prCommits <- pullRequestCommits' ghAuth organization repository toReview
 
     case pr of
         Left e -> error $ "Could not find PR with that ID" ++ show e
