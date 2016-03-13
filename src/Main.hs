@@ -3,9 +3,11 @@ module Main where
 
 import System.Console.CmdArgs
 import System.IO
-import Github.PullRequests hiding (Diff)
-import qualified Github.Data.Definitions as GDD
-import Github.Auth
+import GitHub.Endpoints.PullRequests hiding (Diff)
+import qualified GitHub.Data.GitData as GDD
+import GitHub.Data.Name (mkName, Name(..), untagName)
+import GitHub.Data.Id (mkId, Id(..))
+import GitHub.Auth
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
@@ -17,6 +19,7 @@ import Control.Monad
 import Control.Monad.Catch
 import Data.Algorithm.DiffOutput
 import Data.FileStore
+import qualified Data.Vector as V
 
 data CommandArgs = CommandArgs { usernameArg :: String
                                , passwordFlag :: Bool
@@ -37,30 +40,33 @@ main :: IO ()
 main = do
     CommandArgs username usePassword toReview organization repository <- cmdArgs commandArgs
     password <- if usePassword then getPassword else return ""
+    let organization' = N (T.pack organization)
+    let repository' = N (T.pack repository)
+    let toReview' = Id toReview
 
-    let ghAuth = Just (GithubBasicAuth (BS.pack username) (BS.pack password))
+    let ghAuth = Just (BasicAuth (BS.pack username) (BS.pack password))
 
-    pr <- pullRequest' ghAuth organization repository toReview
-    prCommits <- pullRequestCommits' ghAuth organization repository toReview
+    pr <- pullRequest' ghAuth organization' repository' toReview'
+    prCommits <- pullRequestCommits' ghAuth organization' repository' toReview'
 
     case pr of
         Left _ -> error "Could not find PR with that ID"
         Right pr -> case prCommits of
             Left _ -> error "Could not get commits for PR"
-            Right commits -> doReview pr commits
+            Right commits -> doReview pr (V.toList commits)
 
 fileStore :: FileStore
 fileStore = gitFileStore "."
 
-doReview :: DetailedPullRequest -> [GDD.Commit] -> IO ()
+doReview :: PullRequest -> [GDD.Commit] -> IO ()
 doReview pr commits = do
     -- Commits listing
-    let title = "PR: #" ++ (show . detailedPullRequestNumber $ pr)
-        head = pullRequestCommitSha . detailedPullRequestHead $ pr
-        base = pullRequestCommitSha . detailedPullRequestBase $ pr
+    let title = "PR: #" ++ (show . pullRequestNumber $ pr)
+        head = pullRequestCommitSha . pullRequestHead $ pr
+        base = pullRequestCommitSha . pullRequestBase $ pr
 
     title <- plainText . T.pack $ title
-    commitsShas <- flip newTextList 1 . reverse . map (T.pack . commitSha) $ commits
+    commitsShas <- flip newTextList 1 . reverse . map (untagName . commitSha) $ commits
 
     commitsPane <- return title <--> hBorder <--> return commitsShas
 
