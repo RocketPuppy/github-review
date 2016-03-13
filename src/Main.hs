@@ -21,16 +21,14 @@ import Data.Algorithm.DiffOutput
 import Data.FileStore
 import qualified Data.Vector as V
 
-data CommandArgs = CommandArgs { usernameArg :: String
-                               , passwordFlag :: Bool
+data CommandArgs = CommandArgs { token :: String
                                , reviewArg :: Int
                                , ghOrganization :: String
                                , ghRepository :: String
                                }
     deriving (Show, Data, Typeable)
 
-commandArgs = CommandArgs { usernameArg = def &= help "Github username" &= name "username" &= typ "STRING"
-                          , passwordFlag = def &= help "Prompt for password" &= name "password"
+commandArgs = CommandArgs { token = def &= help "Github API access token" &= name "token" &= typ "STRING"
                           , reviewArg = def &= typ "PULL_REQUEST_ID" &= argPos 0
                           , ghOrganization = def &= help "Github organization" &= name "organization" &= typ "STRING"
                           , ghRepository = def &= help "Github repository" &= name "repository" &= typ "STRING"
@@ -38,13 +36,12 @@ commandArgs = CommandArgs { usernameArg = def &= help "Github username" &= name 
 
 main :: IO ()
 main = do
-    CommandArgs username usePassword toReview organization repository <- cmdArgs commandArgs
-    password <- if usePassword then getPassword else return ""
+    CommandArgs token toReview organization repository <- cmdArgs commandArgs
     let organization' = N (T.pack organization)
     let repository' = N (T.pack repository)
     let toReview' = Id toReview
 
-    let ghAuth = Just (BasicAuth (BS.pack username) (BS.pack password))
+    let ghAuth = Just (OAuth (BS.pack token))
 
     pr <- pullRequest' ghAuth organization' repository' toReview'
     prCommits <- pullRequestCommits' ghAuth organization' repository' toReview'
