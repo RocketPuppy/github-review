@@ -47,7 +47,7 @@ main = do
     prCommits <- pullRequestCommits' ghAuth organization' repository' toReview'
 
     case pr of
-        Left _ -> error "Could not find PR with that ID"
+        Left e -> error $ "Could not find PR with that ID" ++ show e
         Right pr -> case prCommits of
             Left _ -> error "Could not get commits for PR"
             Right commits -> doReview pr (V.toList commits)
