@@ -4,13 +4,9 @@ module Main where
 import System.Console.CmdArgs
 import System.IO
 import GitHub.Endpoints.PullRequests hiding (Diff)
-import qualified GitHub.Data.GitData as GDD
-import qualified GitHub.Data.Definitions as GDD
-import qualified GitHub.Data.Repos as GDD
-import qualified GitHub.Data.PullRequests as GDD
+import qualified GitHub.Data as GDD
 import GitHub.Data.Name (mkName, untagName)
 import GitHub.Data.Id (mkId)
-import GitHub.Auth
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
@@ -46,7 +42,7 @@ main = do
     let organization = mkOwnerName . T.pack . ghOrganization $ args
     let repository = mkRepoName . T.pack . ghRepository $ args
     let toReview = mkPullRequestId . reviewArg $ args
-    let ghAuth = Just . OAuth . BS.pack . token $ args
+    let ghAuth = Just . GDD.OAuth . BS.pack . token $ args
 
     pr <- pullRequest' ghAuth organization repository toReview
     prCommits <- pullRequestCommits' ghAuth organization repository toReview
